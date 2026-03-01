@@ -18,20 +18,22 @@
   .cart-count.visible{display:inline-block;}
   main{position:relative;z-index:1;padding:0 24px 80px;max-width:1400px;margin:0 auto;}
 
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:none;}
   @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:540px){.grid{grid-template-columns:1fr;}main{padding:0 16px 80px;}header{padding:0 16px;}}
   .item{cursor:pointer;position:relative;background:transparent;}
   .item-image-wrap{position:relative;overflow:hidden;aspect-ratio:3/4;background:transparent;}
-  .item-image-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:filter .35s ease;border:none;outline:none;}
-  .item-image-wrap img[src=""],.item-image-wrap img:not([src]),.item-image-wrap img[src="#"]{opacity:0;pointer-events:none;}
-  .item-image-wrap img{color:transparent;}
+  .item-image-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:filter .35s ease;border:0!important;outline:0!important;box-shadow:none!important;color:transparent;background:transparent;}
+  .item-image-wrap img[src=""],.item-image-wrap img:not([src]),.item-image-wrap img[src="#"]{opacity:0!important;pointer-events:none;}
+  .item,.item-image-wrap{border:0!important;outline:0!important;box-shadow:none!important;}
   .img-primary{opacity:1;z-index:1;}.img-secondary{opacity:0;z-index:2;}
   .item:hover .img-primary,.item.touch-active .img-primary{opacity:1;}
   .item:hover .img-secondary,.item.touch-active .img-secondary{opacity:0;}
   .item:hover .item-image-wrap img,.item.touch-active .item-image-wrap img{
-    filter: brightness(0) saturate(100%) invert(82%) sepia(80%) saturate(900%) hue-rotate(28deg) brightness(1.05);
+    filter: brightness(0) saturate(100%) invert(93%) sepia(100%) saturate(800%) hue-rotate(42deg);
   }
+  /* No box highlight on hover */
+  .item:hover,.item.touch-active{outline:none!important;border:none!important;}
   .item-info{display:none;}
   .modal-overlay{position:fixed;inset:0;background:rgba(216,216,216,0.98);z-index:200;display:none;overflow-y:auto;}
   .modal-overlay.open{display:block;}
@@ -191,6 +193,9 @@
 <body>
 
 <canvas id="rippleCanvas"></canvas>
+<audio id="introAudio" preload="auto" loop>
+  <source src="" id="introAudioSrc" type="audio/mpeg">
+</audio>
 <div id="splashScreen">
   <div id="splashBar"></div>
   <div id="splashText">ZIGGURAT GATE</div>
@@ -349,15 +354,17 @@ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 
 async function sbFetch(path,method='GET',body=null){
   const headers={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
-  if(method==='GET'||method==='DELETE') headers['Prefer']='return=representation';
   if(method==='POST'||method==='PATCH') headers['Prefer']='return=minimal';
+  if(method==='DELETE') headers['Prefer']='return=minimal';
   const opts={method,headers};
   if(body) opts.body=JSON.stringify(body);
   try{
     const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
+    if(method==='DELETE'||method==='PATCH'){return r.ok?true:null;}
     if(!r.ok){const t=await r.text();console.error('SB error',r.status,t);return null;}
     const txt=await r.text();
-    return txt?JSON.parse(txt):[];
+    if(!txt||txt==='null') return [];
+    try{return JSON.parse(txt);}catch(e){return [];}
   }catch(e){console.error('SB fetch failed',e);return null;}
 }
 
@@ -478,8 +485,47 @@ async function initReactionBar(itemId,container){
 const EMOJIS=['👺','🫶','🙏','❤️','☑️','⚠️','🆙','🤫','🤦‍♂️','😭','🤝','🔥','🙄','😹','✌️','🏡','🩸','💀','😈','🧪','‼️','😍','🥰','😂','🥹','🤓','😜','🤩','🥳','🥸','😏','😩','😶‍🌫️','🥶','🥵','😳','😖','😫','😡','🙂‍↔️','😤','🫣','🥱','🤮','😵‍💫','👿','👹','🤡','💩','👻','👾','🎃','👐','😽','😾','😿','🙀','😼','😺','✋','👄','🧠','🥷','🧚','🪢','🥽','🐶','🐵','🙈','🙉','🙊','🐒','🦁','🐸','🪿','🦅','🦂','🦖','🦟','🕸️','🐍','🦚','🦜','💯','🧑‍🎤'];
 
 let items=[];
-let cart=[],settings=JSON.parse(localStorage.getItem('zg_settings')||'{"siteName":"ZIGGURAT GATE","insta":"","password":"admin"}'),currentItem=null,selectedSize=null;
+let cart=[],settings=JSON.parse(localStorage.getItem('zg_settings')||'{"siteName":"ZIGGURAT GATE","insta":"","password":"admin","audioUrl":""}'),currentItem=null,selectedSize=null;
 document.getElementById('siteNameDisplay').textContent=settings.siteName||'ZIGGURAT GATE';
+
+// INTRO AUDIO — plays only during splash, then fades out
+(function(){
+  const audio=document.getElementById('introAudio');
+  const src=document.getElementById('introAudioSrc');
+  if(!settings.audioUrl) return;
+  src.src=settings.audioUrl;
+  audio.loop=false;
+  audio.load();
+
+  function startAudio(){
+    audio.volume=0.6;
+    audio.play().catch(()=>{});
+    // Fade out at 6.5s (splash ends at 7.5s)
+    setTimeout(()=>{
+      const fadeInt=setInterval(()=>{
+        if(audio.volume>0.05){audio.volume=Math.max(0,audio.volume-0.05);}
+        else{audio.pause();audio.currentTime=0;clearInterval(fadeInt);}
+      },80);
+    },6500);
+  }
+
+  // Try immediately, fallback to first interaction
+  const tried=audio.play().catch(()=>{
+    const go=()=>{startAudio();document.removeEventListener('touchstart',go);document.removeEventListener('click',go);};
+    document.addEventListener('touchstart',go,{once:true,passive:true});
+    document.addEventListener('click',go,{once:true});
+    return null;
+  });
+  if(tried) tried.then(()=>{
+    // fade out
+    setTimeout(()=>{
+      const fadeInt=setInterval(()=>{
+        if(audio.volume>0.05){audio.volume=Math.max(0,audio.volume-0.05);}
+        else{audio.pause();audio.currentTime=0;clearInterval(fadeInt);}
+      },80);
+    },6500);
+  });
+})();
 document.title=settings.siteName||'ZIGGURAT GATE';
 
 // SPLASH
@@ -600,21 +646,41 @@ document.title=settings.siteName||'ZIGGURAT GATE';
 // GRID
 function renderGrid(){
   const sorted=[...items].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  document.getElementById('grid').innerHTML=sorted.map(item=>`
-    <div class="item">
-      <div class="item-image-wrap" onclick="openModal('${item.id}')"
-           ontouchstart="this.parentElement.classList.add('touch-active')"
-           ontouchend="(el=>setTimeout(()=>el.classList.remove('touch-active'),600))(this.parentElement)">
-        <img class="img-primary" src="${item.img1||''}" loading="lazy" onerror="this.style.display='none'">
-        <img class="img-secondary" src="${item.img2||item.img1||''}" loading="lazy" onerror="this.style.display='none'">
-      </div>
-      <div class="item-reactions" id="reactions-grid-${item.id}"></div>
-    </div>
-  `).join('');
-  // Load reactions for each item
+  const grid=document.getElementById('grid');
+  grid.innerHTML='';
   sorted.forEach(item=>{
-    const el=document.getElementById('reactions-grid-'+item.id);
-    if(el) initReactionBar(item.id,el);
+    const div=document.createElement('div');
+    div.className='item';
+
+    const wrap=document.createElement('div');
+    wrap.className='item-image-wrap';
+    wrap.onclick=()=>openModal(item.id);
+    wrap.addEventListener('touchstart',()=>div.classList.add('touch-active'),{passive:true});
+    wrap.addEventListener('touchend',()=>setTimeout(()=>div.classList.remove('touch-active'),600),{passive:true});
+
+    const img1=document.createElement('img');
+    img1.className='img-primary';
+    img1.loading='lazy';
+    if(item.img1) img1.src=item.img1;
+    img1.onerror=()=>img1.style.display='none';
+
+    const img2=document.createElement('img');
+    img2.className='img-secondary';
+    img2.loading='lazy';
+    if(item.img2||item.img1) img2.src=item.img2||item.img1;
+    img2.onerror=()=>img2.style.display='none';
+
+    wrap.appendChild(img1);
+    wrap.appendChild(img2);
+    div.appendChild(wrap);
+
+    const reactions=document.createElement('div');
+    reactions.className='item-reactions';
+    reactions.id='reactions-grid-'+item.id;
+    div.appendChild(reactions);
+
+    grid.appendChild(div);
+    initReactionBar(item.id,reactions);
   });
 }
 
@@ -649,15 +715,42 @@ function renderCart(){
   total.textContent='CHF '+sum.toFixed(0)+'.—';
 }
 function toggleCart(){document.getElementById('cartPanel').classList.toggle('open');document.getElementById('cartOverlay').classList.toggle('open');}
-function sendOrder(){if(!cart.length)return;const insta=settings.insta||'moncompte';const lines=cart.map(i=>`• ${i.name} — Taille ${i.size} — ${i.price}`).join('\n');window.open(`https://ig.me/m/${insta}?text=${encodeURIComponent('Bonjour, je souhaite commander :\n\n'+lines+'\n\nMerci !')}`);}
+function sendOrder(){
+  if(!cart.length)return;
+  const insta=(settings.insta||'').replace('@','').trim();
+  if(!insta){alert('Configure ton compte Instagram dans les réglages admin.');return;}
+  const lines=cart.map(i=>`• ${i.name} — Taille ${i.size} — ${i.price}`).join('%0A');
+  const intro='Bonjour%2C%20je%20souhaite%20commander%20%3A%0A%0A';
+  const outro='%0A%0AMerci%20!';
+  const msg=intro+lines+outro;
+  window.open('https://ig.me/m/'+insta+'?text='+msg,'_blank');
+}
 
 // ADMIN
 function openAdminLogin(){document.getElementById('loginScreen').style.display='flex';setTimeout(()=>document.getElementById('adminPassword').focus(),100);}
 function checkLogin(){const pw=document.getElementById('adminPassword').value;if(pw===(settings.password||'admin')){document.getElementById('loginScreen').style.display='none';document.getElementById('adminPassword').value='';openAdmin();}else{document.getElementById('loginError').style.display='block';}}
 document.getElementById('adminPassword').addEventListener('keydown',e=>{if(e.key==='Enter')checkLogin();});
-function openAdmin(){localStorage.setItem('zg_admin_ok','1');document.getElementById('adminPanel').classList.add('open');document.getElementById('settingSiteName').value=settings.siteName||'';document.getElementById('settingInsta').value=settings.insta||'';renderAdminList();}
+function openAdmin(){localStorage.setItem('zg_admin_ok','1');document.getElementById('adminPanel').classList.add('open');document.getElementById('settingSiteName').value=settings.siteName||'';document.getElementById('settingInsta').value=settings.insta||'';document.getElementById('settingAudio').value=settings.audioUrl||'';renderAdminList();}
 function closeAdmin(){document.getElementById('adminPanel').classList.remove('open');cancelEdit();}
-function saveSettings(){settings.siteName=document.getElementById('settingSiteName').value||'ZIGGURAT GATE';settings.insta=document.getElementById('settingInsta').value.replace('@','');const pw=document.getElementById('settingPassword').value;if(pw.trim())settings.password=pw.trim();localStorage.setItem('zg_settings',JSON.stringify(settings));document.getElementById('siteNameDisplay').textContent=settings.siteName;document.title=settings.siteName;const m=document.getElementById('settingsSaved');m.style.display='block';setTimeout(()=>m.style.display='none',2000);}
+function saveSettings(){
+  settings.siteName=document.getElementById('settingSiteName').value||'ZIGGURAT GATE';
+  settings.insta=document.getElementById('settingInsta').value.replace('@','');
+  const audioUrl=document.getElementById('settingAudio').value.trim();
+  if(audioUrl) settings.audioUrl=audioUrl;
+  const pw=document.getElementById('settingPassword').value;
+  if(pw.trim())settings.password=pw.trim();
+  localStorage.setItem('zg_settings',JSON.stringify(settings));
+  document.getElementById('siteNameDisplay').textContent=settings.siteName;
+  document.title=settings.siteName;
+  // Apply audio immediately
+  if(audioUrl){
+    settings.audioUrl=audioUrl;
+    const audio=document.getElementById('introAudio');
+    document.getElementById('introAudioSrc').src=audioUrl;
+    audio.load();
+  }
+  const m=document.getElementById('settingsSaved');m.style.display='block';setTimeout(()=>m.style.display='none',2000);
+}
 function renderAdminList(){const sorted=[...items].sort((a,b)=>new Date(b.date)-new Date(a.date));document.getElementById('adminItemCount').textContent=items.length;document.getElementById('adminItemsList').innerHTML=!sorted.length?'<div style="font-size:11px;color:var(--gray);padding:12px 0">Aucun article.</div>':sorted.map(item=>`<div class="admin-item-row"><img class="admin-item-thumb" src="${item.img1||''}" alt=""><div class="admin-item-name">${item.name}</div><div class="admin-item-actions"><button class="admin-edit-btn" onclick="editItem('${item.id}')">Modifier</button><button class="admin-delete-btn" onclick="deleteItem('${item.id}')">✕</button></div></div>`).join('');}
 async function saveItem(){const id=document.getElementById('editingId').value||Date.now().toString();const name=document.getElementById('formName').value.trim();if(!name)return;const sizes=[...document.querySelectorAll('.size-check:checked')].map(c=>c.value);const item={id,name,price:document.getElementById('formPrice').value.trim(),desc:document.getElementById('formDesc').value.trim(),img1:document.getElementById('formImg1').value.trim(),img2:document.getElementById('formImg2').value.trim(),sizes,date:new Date().toISOString()};const idx=items.findIndex(i=>i.id===id);if(idx>=0)items[idx]={...items[idx],...item};else items.unshift(item);const m=document.getElementById('itemSaved');m.style.display='block';m.textContent='Sauvegarde...';await sbSaveItem(item);await loadItems();renderAdminList();cancelEdit();m.textContent='Sauvegardé ✓';setTimeout(()=>m.style.display='none',2000);}
 function editItem(id){const item=items.find(i=>i.id===id);if(!item)return;document.getElementById('editingId').value=item.id;document.getElementById('formName').value=item.name||'';document.getElementById('formPrice').value=item.price||'';document.getElementById('formDesc').value=item.desc||'';document.getElementById('formImg1').value=item.img1||'';document.getElementById('formImg2').value=item.img2||'';document.querySelectorAll('.size-check').forEach(c=>c.checked=(item.sizes||[]).includes(c.value));document.getElementById('formSectionTitle').textContent="Modifier l'article";document.getElementById('cancelEditBtn').style.display='inline-block';document.getElementById('formName').scrollIntoView({behavior:'smooth',block:'center'});}
@@ -788,9 +881,13 @@ function closeForum(){
 
 async function loadForumMessages(){
   const data=await sbFetch('forum_messages?select=*&order=created_at.asc&limit=200');
-  if(!data||!Array.isArray(data)) return;
+  const container2=document.getElementById('forumMessages');
+  if(!data||!Array.isArray(data)){
+    container2.innerHTML='<div class="forum-loading">Erreur de connexion. Vérifie ta connexion.</div>';
+    return;
+  }
   const me=getForumIdentity();
-  const container=document.getElementById('forumMessages');
+  const container=container2;
   const wasAtBottom=container.scrollHeight-container.scrollTop-container.clientHeight<60;
 
   // Sort: pinned first, then chronological
