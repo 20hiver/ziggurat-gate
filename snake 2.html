@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZIGGURAT SNAKE</title>
+<style>
+:root{--neon:#c8ff00;--black:#0a0a0a;--gray:#d0d0d0;--font:'Helvetica Neue','Arial',sans-serif;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--font);background:#c8c8c8;color:#222;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+body::before{content:'';position:fixed;inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Ctext x='18' y='24' font-size='14' font-family='Helvetica Neue,Arial,sans-serif' fill='%23888' fill-opacity='0.4' text-anchor='middle'%3E%2B%3C/text%3E%3C/svg%3E");
+  background-size:36px 36px;pointer-events:none;z-index:0;}
+header{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #aaa;background:#c8c8c8;position:relative;z-index:1;flex-shrink:0;}
+.back{font-size:11px;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;color:#444;}
+#snakeScore{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:#444;}
+#snakeWrap{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;position:relative;z-index:1;padding:16px;}
+#snakeCanvas{border:1px solid #aaa;background:#bebebe;display:block;max-width:100%;}
+#snakeMsg{text-align:center;font-size:11px;letter-spacing:.1em;text-transform:uppercase;line-height:1.8;white-space:pre-line;color:#555;min-height:24px;}
+#snakeStartBtn{height:36px;padding:0 28px;background:#333;color:#d0d0d0;border:none;font-family:var(--font);font-size:10px;letter-spacing:.18em;text-transform:uppercase;cursor:pointer;}
+#snakeDpad{display:none;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(2,52px);gap:6px;margin-top:4px;}
+@media(max-width:700px){#snakeDpad{display:grid;}}
+.dpad-btn{background:#444;color:#d0d0d0;border:none;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:0;-webkit-tap-highlight-color:transparent;}
+.dpad-btn:active{background:#222;}
+</style>
+</head>
+<body>
+<header>
+  <a href="index.html" class="back">← ZIGGURAT GATE</a>
+  <span id="snakeScore">SCORE: 0</span>
+</header>
+<div id="snakeWrap">
+  <canvas id="snakeCanvas"></canvas>
+  <div id="snakeMsg">APPUIE SUR START OU UNE TOUCHE</div>
+  <button id="snakeStartBtn" onclick="snakeGame.reset()">START</button>
+  <div id="snakeDpad">
+    <div></div><button class="dpad-btn" data-dir="UP">▲</button><div></div>
+    <button class="dpad-btn" data-dir="LEFT">◀</button>
+    <button class="dpad-btn" data-dir="DOWN">▼</button>
+    <button class="dpad-btn" data-dir="RIGHT">▶</button>
+  </div>
+</div>
+<script>
+const EMOJIS=['👺','🫶','🙏','❤️','☑️','⚠️','🆙','🤫','🤦‍♂️','😭','🤝','🔥','🙄','😹','✌️','🏡','🩸','💀','😈','🧪','‼️','😍','🥰','😂','🥹','🤓','😜','🤩','🥳','🥸','😏','😩','😶‍🌫️','🥶','🥵','😳','😖','😫','😡','🙂‍↔️','😤','🫣','🥱','🤮','😵‍💫','👿','👹','🤡','💩','👻','👾','🎃','👐','😽','😾','😿','🙀','😼','😺','✋','👄','🧠','🥷','🧚','🪢','🥽','🐶','🐵','🙈','🙉','🙊','🐒','🦁','🐸','🪿','🦅','🦂','🦖','🦟','🕸️','🐍','🦚','🦜','💯','🧑‍🎤'];
+const items=JSON.parse(localStorage.getItem('zg_items')||'[]');
+
+class SnakeGame{
+  constructor(){
+    this.canvas=document.getElementById('snakeCanvas');
+    this.ctx=this.canvas.getContext('2d');
+    this.C=26;this.loop=null;this.started=false;this.score=0;
+    this.dir={x:1,y:0};this.nextDir={x:1,y:0};
+    this.snake=[];this.food=null;this.foodItem=null;this.foodImg=null;
+    this.pool=items.length>0
+      ?items.map(i=>({type:'img',src:i.img1||''})).concat(EMOJIS.map(e=>({type:'emoji',char:e})))
+      :EMOJIS.map(e=>({type:'emoji',char:e}));
+    this._resize();
+    window.addEventListener('resize',()=>this._resize());
+    document.addEventListener('keydown',e=>this._onKey(e));
+    let tx=0,ty=0;
+    this.canvas.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
+    this.canvas.addEventListener('touchend',e=>{
+      const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
+      if(Math.abs(dx)>Math.abs(dy))this._setDir(dx>0?{x:1,y:0}:{x:-1,y:0});
+      else this._setDir(dy>0?{x:0,y:1}:{x:0,y:-1});
+      if(!this.started)this.reset();
+    },{passive:true});
+    document.querySelectorAll('.dpad-btn').forEach(btn=>{
+      btn.addEventListener('touchstart',e=>{e.preventDefault();const d=btn.dataset.dir;this._setDir(d==='UP'?{x:0,y:-1}:d==='DOWN'?{x:0,y:1}:d==='LEFT'?{x:-1,y:0}:{x:1,y:0});if(!this.started)this.reset();},{passive:false});
+      btn.onclick=()=>{const d=btn.dataset.dir;this._setDir(d==='UP'?{x:0,y:-1}:d==='DOWN'?{x:0,y:1}:d==='LEFT'?{x:-1,y:0}:{x:1,y:0});if(!this.started)this.reset();};
+    });
+    this._draw();
+  }
+  _resize(){
+    const wrap=document.getElementById('snakeWrap');
+    const W=Math.min(wrap.clientWidth-32,520);
+    const H=Math.min(wrap.clientHeight-160,460);
+    this.cols=Math.floor(W/this.C);
+    this.rows=Math.floor(H/this.C);
+    this.canvas.width=this.cols*this.C;
+    this.canvas.height=this.rows*this.C;
+    this._draw();
+  }
+  reset(){
+    this.stop();this.score=0;this.started=true;
+    this.dir={x:1,y:0};this.nextDir={x:1,y:0};
+    const mx=Math.floor(this.cols/2),my=Math.floor(this.rows/2);
+    this.snake=[{x:mx,y:my},{x:mx-1,y:my},{x:mx-2,y:my}];
+    this._placeFood();this._updateScore();
+    document.getElementById('snakeMsg').textContent='';
+    this.loop=setInterval(()=>this._tick(),190);
+  }
+  stop(){clearInterval(this.loop);this.loop=null;this.started=false;}
+  _placeFood(){
+    const occ=new Set(this.snake.map(s=>`${s.x},${s.y}`));
+    let p;do{p={x:Math.floor(Math.random()*this.cols),y:Math.floor(Math.random()*this.rows)};}while(occ.has(`${p.x},${p.y}`));
+    this.food=p;
+    this.foodItem=this.pool[Math.floor(Math.random()*this.pool.length)];
+    if(this.foodItem.type==='img'){this.foodImg=new Image();this.foodImg.crossOrigin='anonymous';this.foodImg.src=this.foodItem.src;}
+    else this.foodImg=null;
+  }
+  _setDir(d){if(d.x&&this.dir.x)return;if(d.y&&this.dir.y)return;this.nextDir=d;}
+  _onKey(e){
+    const m={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},w:{x:0,y:-1},s:{x:0,y:1},a:{x:-1,y:0},d:{x:1,y:0}};
+    if(m[e.key]){e.preventDefault();this._setDir(m[e.key]);if(!this.started)this.reset();}
+    if(e.key==='r'||e.key==='R')this.reset();
+  }
+  _tick(){
+    this.dir=this.nextDir;
+    const h={x:this.snake[0].x+this.dir.x,y:this.snake[0].y+this.dir.y};
+    if(h.x<0||h.x>=this.cols||h.y<0||h.y>=this.rows){this._die();return;}
+    if(this.snake.some(s=>s.x===h.x&&s.y===h.y)){this._die();return;}
+    this.snake.unshift(h);
+    if(h.x===this.food.x&&h.y===this.food.y){this.score++;this._updateScore();this._placeFood();}
+    else this.snake.pop();
+    this._draw();
+  }
+  _die(){
+    this.stop();this._draw();
+    document.getElementById('snakeMsg').innerHTML='GAME OVER — SCORE: '+this.score+'\nR POUR REJOUER';
+  }
+  _updateScore(){document.getElementById('snakeScore').textContent='SCORE: '+this.score;}
+  _draw(){
+    const ctx=this.ctx,C=this.C,W=this.canvas.width,H=this.canvas.height;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#bebebe';ctx.fillRect(0,0,W,H);
+    // grid
+    ctx.strokeStyle='rgba(0,0,0,0.07)';ctx.lineWidth=0.5;
+    for(let x=0;x<=this.cols;x++){ctx.beginPath();ctx.moveTo(x*C,0);ctx.lineTo(x*C,H);ctx.stroke();}
+    for(let y=0;y<=this.rows;y++){ctx.beginPath();ctx.moveTo(0,y*C);ctx.lineTo(W,y*C);ctx.stroke();}
+    // food
+    if(this.food){
+      const fx=this.food.x*C,fy=this.food.y*C;
+      if(this.foodItem?.type==='img'&&this.foodImg?.complete&&this.foodImg.naturalWidth){
+        ctx.drawImage(this.foodImg,fx+2,fy+2,C-4,C-4);
+      } else if(this.foodItem?.type==='emoji'){
+        ctx.font=(C-4)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(this.foodItem.char,fx+C/2,fy+C/2);
+      }
+    }
+    // snake
+    this.snake.forEach((seg,i)=>{
+      const sx=seg.x*C,sy=seg.y*C,t=i/Math.max(this.snake.length,1);
+      if(i===0){
+        ctx.fillStyle='#333';ctx.fillRect(sx+1,sy+1,C-2,C-2);
+        ctx.fillStyle='#c8c8c8';
+        const ex=this.dir.x===1?sx+C-8:(this.dir.x===-1?sx+5:sx+C/2-5);
+        const ey=this.dir.y===1?sy+C-8:(this.dir.y===-1?sy+5:sy+C/2-5);
+        ctx.fillRect(ex,sy+4,3,3);ctx.fillRect(ex,sy+C-7,3,3);
+      } else {
+        const v=Math.round(80+t*110);
+        ctx.fillStyle=`rgb(${v},${v},${v})`;
+        const p=1+Math.floor(t*2);
+        ctx.fillRect(sx+p,sy+p,C-p*2,C-p*2);
+      }
+    });
+  }
+}
+const snakeGame=new SnakeGame();
+</script>
+</body>
+</html>
