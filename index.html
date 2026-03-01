@@ -21,15 +21,16 @@
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;}
   @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:540px){.grid{grid-template-columns:1fr;}main{padding:0 16px 80px;}header{padding:0 16px;}}
-  .item{cursor:pointer;position:relative;background:#d8d8d8;}
-  .item-image-wrap{position:relative;overflow:hidden;aspect-ratio:3/4;background:#d8d8d8;}
+  .item{cursor:pointer;position:relative;background:transparent;}
+  .item-image-wrap{position:relative;overflow:hidden;aspect-ratio:3/4;background:transparent;}
   .item-image-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:filter .35s ease;border:none;outline:none;}
-  .item-image-wrap img[src=""],.item-image-wrap img:not([src]),.item-image-wrap img[src="#"]{opacity:0;}
+  .item-image-wrap img[src=""],.item-image-wrap img:not([src]),.item-image-wrap img[src="#"]{opacity:0;pointer-events:none;}
+  .item-image-wrap img{color:transparent;}
   .img-primary{opacity:1;z-index:1;}.img-secondary{opacity:0;z-index:2;}
   .item:hover .img-primary,.item.touch-active .img-primary{opacity:1;}
   .item:hover .img-secondary,.item.touch-active .img-secondary{opacity:0;}
   .item:hover .item-image-wrap img,.item.touch-active .item-image-wrap img{
-    filter: brightness(0) saturate(100%) invert(90%) sepia(100%) saturate(500%) hue-rotate(30deg) brightness(1.1);
+    filter: brightness(0) saturate(100%) invert(82%) sepia(80%) saturate(900%) hue-rotate(28deg) brightness(1.05);
   }
   .item-info{display:none;}
   .modal-overlay{position:fixed;inset:0;background:rgba(216,216,216,0.98);z-index:200;display:none;overflow-y:auto;}
@@ -269,6 +270,11 @@
 <div class="admin-panel" id="adminPanel">
   <div class="admin-inner">
     <div class="admin-header"><span class="admin-title">Admin</span><button class="modal-close" onclick="closeAdmin()">Fermer ✕</button></div>
+    <div class="admin-section-title">Forum</div>
+    <div style="margin-bottom:28px;">
+      <button class="form-btn" onclick="openForum()" style="width:auto;padding:0 20px;">Ouvrir ZIGGURAT FORUMS ®</button>
+      <div style="font-size:10px;color:var(--gray);margin-top:8px;letter-spacing:.03em;">Les boutons Épingler / Supprimer apparaissent dans le forum quand tu es connecté en admin.</div>
+    </div>
     <div class="admin-section-title">Réglages</div>
     <div class="add-form" style="margin-bottom:32px">
       <div class="form-field"><label class="form-label">Nom du site</label><input type="text" class="form-input" id="settingSiteName"></div>
@@ -342,12 +348,17 @@ const SB_URL='https://dzfffstayfydhpyajtqm.supabase.co';
 const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6ZmZmc3RheWZ5ZGhweWFqdHFtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzMjA3MjYsImV4cCI6MjA4Nzg5NjcyNn0.nccrwPCRFUHUJzN5lKsfXCrISW2nOtSS4olLitb05ZQ';
 
 async function sbFetch(path,method='GET',body=null){
-  const opts={method,headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=representation'}};
+  const headers={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
+  if(method==='GET'||method==='DELETE') headers['Prefer']='return=representation';
+  if(method==='POST'||method==='PATCH') headers['Prefer']='return=minimal';
+  const opts={method,headers};
   if(body) opts.body=JSON.stringify(body);
-  const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
-  if(!r.ok){const t=await r.text();console.error('SB error',r.status,t);return null;}
-  const txt=await r.text();
-  return txt?JSON.parse(txt):null;
+  try{
+    const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
+    if(!r.ok){const t=await r.text();console.error('SB error',r.status,t);return null;}
+    const txt=await r.text();
+    return txt?JSON.parse(txt):[];
+  }catch(e){console.error('SB fetch failed',e);return null;}
 }
 
 // Load items from Supabase
@@ -594,8 +605,8 @@ function renderGrid(){
       <div class="item-image-wrap" onclick="openModal('${item.id}')"
            ontouchstart="this.parentElement.classList.add('touch-active')"
            ontouchend="(el=>setTimeout(()=>el.classList.remove('touch-active'),600))(this.parentElement)">
-        <img class="img-primary" src="${item.img1||''}" loading="lazy">
-        <img class="img-secondary" src="${item.img2||item.img1||''}" loading="lazy">
+        <img class="img-primary" src="${item.img1||''}" loading="lazy" onerror="this.style.display='none'">
+        <img class="img-secondary" src="${item.img2||item.img1||''}" loading="lazy" onerror="this.style.display='none'">
       </div>
       <div class="item-reactions" id="reactions-grid-${item.id}"></div>
     </div>
@@ -644,7 +655,7 @@ function sendOrder(){if(!cart.length)return;const insta=settings.insta||'moncomp
 function openAdminLogin(){document.getElementById('loginScreen').style.display='flex';setTimeout(()=>document.getElementById('adminPassword').focus(),100);}
 function checkLogin(){const pw=document.getElementById('adminPassword').value;if(pw===(settings.password||'admin')){document.getElementById('loginScreen').style.display='none';document.getElementById('adminPassword').value='';openAdmin();}else{document.getElementById('loginError').style.display='block';}}
 document.getElementById('adminPassword').addEventListener('keydown',e=>{if(e.key==='Enter')checkLogin();});
-function openAdmin(){document.getElementById('adminPanel').classList.add('open');document.getElementById('settingSiteName').value=settings.siteName||'';document.getElementById('settingInsta').value=settings.insta||'';renderAdminList();}
+function openAdmin(){localStorage.setItem('zg_admin_ok','1');document.getElementById('adminPanel').classList.add('open');document.getElementById('settingSiteName').value=settings.siteName||'';document.getElementById('settingInsta').value=settings.insta||'';renderAdminList();}
 function closeAdmin(){document.getElementById('adminPanel').classList.remove('open');cancelEdit();}
 function saveSettings(){settings.siteName=document.getElementById('settingSiteName').value||'ZIGGURAT GATE';settings.insta=document.getElementById('settingInsta').value.replace('@','');const pw=document.getElementById('settingPassword').value;if(pw.trim())settings.password=pw.trim();localStorage.setItem('zg_settings',JSON.stringify(settings));document.getElementById('siteNameDisplay').textContent=settings.siteName;document.title=settings.siteName;const m=document.getElementById('settingsSaved');m.style.display='block';setTimeout(()=>m.style.display='none',2000);}
 function renderAdminList(){const sorted=[...items].sort((a,b)=>new Date(b.date)-new Date(a.date));document.getElementById('adminItemCount').textContent=items.length;document.getElementById('adminItemsList').innerHTML=!sorted.length?'<div style="font-size:11px;color:var(--gray);padding:12px 0">Aucun article.</div>':sorted.map(item=>`<div class="admin-item-row"><img class="admin-item-thumb" src="${item.img1||''}" alt=""><div class="admin-item-name">${item.name}</div><div class="admin-item-actions"><button class="admin-edit-btn" onclick="editItem('${item.id}')">Modifier</button><button class="admin-delete-btn" onclick="deleteItem('${item.id}')">✕</button></div></div>`).join('');}
@@ -705,6 +716,7 @@ class SnakeGame{
   }
 }
 
+localStorage.removeItem('zg_admin_ok'); // clear admin on fresh load
 renderCart();
 loadItems(); // load from Supabase
 snakeGame=new SnakeGame();
@@ -776,21 +788,32 @@ function closeForum(){
 
 async function loadForumMessages(){
   const data=await sbFetch('forum_messages?select=*&order=created_at.asc&limit=200');
-  if(!data) return;
+  if(!data||!Array.isArray(data)) return;
   const me=getForumIdentity();
   const container=document.getElementById('forumMessages');
   const wasAtBottom=container.scrollHeight-container.scrollTop-container.clientHeight<60;
 
-  container.innerHTML=data.length===0
+  // Sort: pinned first, then chronological
+  const pinned=data.filter(m=>m.pinned);
+  const rest=data.filter(m=>!m.pinned);
+  const sorted=[...pinned,...rest];
+  const isAdmin=localStorage.getItem('zg_admin_ok')==='1';
+
+  container.innerHTML=sorted.length===0
     ?'<div class="forum-loading">Pas encore de messages. Sois le premier !</div>'
-    :data.map(msg=>{
+    :sorted.map(msg=>{
       const isMe=msg.ip_hash===me.ip_hash;
       const time=new Date(msg.created_at).toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'});
       const date=new Date(msg.created_at).toLocaleDateString('fr-CH',{day:'2-digit',month:'2-digit'});
-      return `<div class="forum-msg" style="${isMe?'flex-direction:row-reverse;text-align:right':''}">
+      const pinnedBadge=msg.pinned?'<span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;background:#0a0a0a;color:#c8ff00;padding:1px 5px;margin-left:6px;">ÉPINGLÉ</span>':'';
+      const adminBtns=isAdmin?`<span style="margin-left:8px;display:inline-flex;gap:6px;">
+        <button onclick="forumPin(${msg.id},${!msg.pinned})" style="font-size:9px;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid #aaa;cursor:pointer;padding:1px 5px;font-family:var(--font);color:#555;">${msg.pinned?'DÉSÉPINGLER':'ÉPINGLER'}</button>
+        <button onclick="forumDelete(${msg.id})" style="font-size:9px;letter-spacing:.06em;text-transform:uppercase;background:none;border:1px solid #faa;cursor:pointer;padding:1px 5px;font-family:var(--font);color:#c44;">SUPPR</button>
+      </span>`:'';
+      return `<div class="forum-msg${msg.pinned?' pinned-msg':''}" style="${isMe?'flex-direction:row-reverse;text-align:right':''}${msg.pinned?';border-left:2px solid #0a0a0a;padding-left:8px':''}">
         <div class="forum-msg-avatar">${msg.emoji}</div>
         <div class="forum-msg-body">
-          <div class="forum-msg-meta">${msg.ip_hash} · ${date} ${time}${isMe?' · toi':''}</div>
+          <div class="forum-msg-meta">${msg.ip_hash} · ${date} ${time}${isMe?' · toi':''}${pinnedBadge}${adminBtns}</div>
           <div class="forum-msg-text">${escapeHtml(msg.content)}</div>
         </div>
       </div>`;
@@ -806,9 +829,10 @@ async function sendForumMsg(){
   const me=getForumIdentity();
   const btn=document.getElementById('forumSend');
   btn.disabled=true;
-  await sbFetch('forum_messages','POST',{content,ip_hash:me.ip_hash,emoji:me.emoji});
+  const res=await sbFetch('forum_messages','POST',{content,ip_hash:me.ip_hash,emoji:me.emoji});
   txt.value='';
-  txt.style.height='';
+  txt.style.height='auto';
+  btn.disabled=false;
   await loadForumMessages();
   const container=document.getElementById('forumMessages');
   container.scrollTop=container.scrollHeight;
@@ -823,6 +847,17 @@ document.addEventListener('keydown',e=>{
 function autoResize(el){
   el.style.height='auto';
   el.style.height=Math.min(el.scrollHeight,120)+'px';
+}
+
+async function forumPin(id,pinned){
+  await sbFetch('forum_messages?id=eq.'+id,'PATCH',{pinned});
+  await loadForumMessages();
+}
+
+async function forumDelete(id){
+  if(!confirm('Supprimer ce message ?')) return;
+  await sbFetch('forum_messages?id=eq.'+id,'DELETE');
+  await loadForumMessages();
 }
 
 function escapeHtml(s){
