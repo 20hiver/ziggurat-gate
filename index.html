@@ -124,18 +124,7 @@
   #splashScreen.out{animation:sOut .4s ease forwards;pointer-events:none;}
   @keyframes sOut{to{opacity:0;}}
 
-  /* SNAKE — section en bas de page */
-  #snakeSection{position:relative;z-index:1;background:#d0d0d0;border-top:1px solid #aaa;margin-top:60px;}
-  #snakeHeader{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;border-bottom:1px solid #aaa;}
-  #snakeTitle{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:#333;}
-  #snakeScore{font-size:11px;letter-spacing:.1em;color:#333;}
-  #snakeWrap{display:flex;align-items:center;justify-content:center;padding:24px 24px 40px;flex-direction:column;gap:12px;}
-  #snakeCanvas{border:1px solid #aaa;background:#bebebe;display:block;}
-  #snakeMsg{text-align:center;font-size:11px;letter-spacing:.1em;text-transform:uppercase;line-height:2;white-space:pre-line;color:#555;}
-  #snakeDpad{display:none;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(2,48px);gap:4px;}
-  @media(max-width:700px){#snakeDpad{display:grid;}}
-  .dpad-btn{background:#444;color:#d0d0d0;border:none;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-  #snakeStartBtn{height:36px;padding:0 24px;background:#333;color:#d0d0d0;border:none;font-family:var(--font);font-size:10px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;}
+  /* Snake is in snake.html */
 
   /* REACTIONS */
   .reactions-bar{display:flex;flex-wrap:wrap;gap:5px;padding:8px 0 4px;align-items:center;min-height:32px;position:relative;z-index:4;}
@@ -284,6 +273,7 @@
     <div class="add-form" style="margin-bottom:32px">
       <div class="form-field"><label class="form-label">Nom du site</label><input type="text" class="form-input" id="settingSiteName"></div>
       <div class="form-field"><label class="form-label">Instagram (sans @)</label><input type="text" class="form-input" id="settingInsta"></div>
+      <div class="form-field"><label class="form-label">URL audio d'intro (MP3 lien direct)</label><input type="text" class="form-input" id="settingAudio" placeholder="https://... .mp3"><div style="font-size:10px;color:var(--gray);margin-top:4px;letter-spacing:.02em;">Héberge sur Google Drive (partage public) ou Dropbox.</div></div>
       <div class="form-field"><label class="form-label">Nouveau mot de passe</label><input type="password" class="form-input" id="settingPassword" placeholder="Laisser vide pour ne pas changer"></div>
       <div class="success-msg" id="settingsSaved">Sauvegardé ✓</div>
       <button class="form-btn" onclick="saveSettings()">Sauvegarder</button>
@@ -354,18 +344,26 @@ const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZ
 
 async function sbFetch(path,method='GET',body=null){
   const headers={'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json'};
-  if(method==='POST'||method==='PATCH') headers['Prefer']='return=minimal';
+  if(method==='POST') headers['Prefer']='return=minimal';
+  if(method==='PATCH') headers['Prefer']='return=minimal';
   if(method==='DELETE') headers['Prefer']='return=minimal';
   const opts={method,headers};
   if(body) opts.body=JSON.stringify(body);
   try{
     const r=await fetch(SB_URL+'/rest/v1/'+path,opts);
-    if(method==='DELETE'||method==='PATCH'){return r.ok?true:null;}
-    if(!r.ok){const t=await r.text();console.error('SB error',r.status,t);return null;}
+    if(method==='DELETE'||method==='PATCH') return r.ok;
+    if(!r.ok){
+      const t=await r.text();
+      console.error('SB error',r.status,t);
+      return method==='GET'?[]:null;
+    }
     const txt=await r.text();
-    if(!txt||txt==='null') return [];
-    try{return JSON.parse(txt);}catch(e){return [];}
-  }catch(e){console.error('SB fetch failed',e);return null;}
+    if(!txt||txt==='null'||txt==='') return method==='GET'?[]:true;
+    try{return JSON.parse(txt);}catch(e){return method==='GET'?[]:[]; }
+  }catch(e){
+    console.error('SB fetch failed',e);
+    return method==='GET'?[]:null;
+  }
 }
 
 // Load items from Supabase
@@ -485,7 +483,7 @@ async function initReactionBar(itemId,container){
 const EMOJIS=['👺','🫶','🙏','❤️','☑️','⚠️','🆙','🤫','🤦‍♂️','😭','🤝','🔥','🙄','😹','✌️','🏡','🩸','💀','😈','🧪','‼️','😍','🥰','😂','🥹','🤓','😜','🤩','🥳','🥸','😏','😩','😶‍🌫️','🥶','🥵','😳','😖','😫','😡','🙂‍↔️','😤','🫣','🥱','🤮','😵‍💫','👿','👹','🤡','💩','👻','👾','🎃','👐','😽','😾','😿','🙀','😼','😺','✋','👄','🧠','🥷','🧚','🪢','🥽','🐶','🐵','🙈','🙉','🙊','🐒','🦁','🐸','🪿','🦅','🦂','🦖','🦟','🕸️','🐍','🦚','🦜','💯','🧑‍🎤'];
 
 let items=[];
-let cart=[],settings=JSON.parse(localStorage.getItem('zg_settings')||'{"siteName":"ZIGGURAT GATE","insta":"","password":"admin","audioUrl":""}'),currentItem=null,selectedSize=null;
+let cart=[],settings=JSON.parse(localStorage.getItem('zg_settings')||'{"siteName":"ZIGGURAT GATE","insta":"","password":"admin","audioUrl":""}'),currentItem=null,selectedSize=null,forumOpen=false,forumPollInterval=null;
 document.getElementById('siteNameDisplay').textContent=settings.siteName||'ZIGGURAT GATE';
 
 // INTRO AUDIO — plays only during splash, then fades out
@@ -757,59 +755,7 @@ function editItem(id){const item=items.find(i=>i.id===id);if(!item)return;docume
 function cancelEdit(){['editingId','formName','formPrice','formDesc','formImg1','formImg2'].forEach(id=>document.getElementById(id).value='');document.querySelectorAll('.size-check').forEach(c=>c.checked=false);document.getElementById('formSectionTitle').textContent='Ajouter un article';document.getElementById('cancelEditBtn').style.display='none';}
 async function deleteItem(id){if(!confirm('Supprimer cet article ?'))return;await sbDeleteItem(id);items=items.filter(i=>i.id!==id);renderGrid();renderAdminList();}
 
-// SNAKE — always visible at bottom
-let snakeGame=null;
 
-class SnakeGame{
-  constructor(){
-    this.canvas=document.getElementById('snakeCanvas');
-    this.ctx=this.canvas.getContext('2d');
-    this.C=28;this.loop=null;this.started=false;this.score=0;
-    this.dir={x:1,y:0};this.nextDir={x:1,y:0};
-    this.snake=[];this.food=null;this.foodItem=null;this.foodImg=null;
-    this.pool=items.length>0
-      ?items.map(i=>({type:'img',src:i.img1||''})).concat(EMOJIS.map(e=>({type:'emoji',char:e})))
-      :EMOJIS.map(e=>({type:'emoji',char:e}));
-    this._resize();
-    window.addEventListener('resize',()=>this._resize());
-    document.addEventListener('keydown',e=>this._onKey(e));
-    let tx=0,ty=0;
-    this.canvas.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY;},{passive:true});
-    this.canvas.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;if(Math.abs(dx)>Math.abs(dy))this._setDir(dx>0?{x:1,y:0}:{x:-1,y:0});else this._setDir(dy>0?{x:0,y:1}:{x:0,y:-1});if(!this.started)this.start();},{passive:true});
-    document.querySelectorAll('.dpad-btn').forEach(btn=>{btn.onclick=()=>{const d=btn.dataset.dir;this._setDir(d==='UP'?{x:0,y:-1}:d==='DOWN'?{x:0,y:1}:d==='LEFT'?{x:-1,y:0}:{x:1,y:0});if(!this.started)this.start();};});
-    this.reset();
-  }
-  _resize(){const w=document.getElementById('snakeWrap');const W=Math.min(w.clientWidth-32,560);const H=Math.min(w.clientHeight-120,500);this.cols=Math.floor(W/this.C);this.rows=Math.floor(H/this.C);this.canvas.width=this.cols*this.C;this.canvas.height=this.rows*this.C;this._draw();}
-  reset(){this.stop();this.score=0;this.started=false;this.dir={x:1,y:0};this.nextDir={x:1,y:0};const mx=Math.floor(this.cols/2),my=Math.floor(this.rows/2);this.snake=[{x:mx,y:my},{x:mx-1,y:my},{x:mx-2,y:my}];this._placeFood();this._updateScore();document.getElementById('snakeMsg').textContent='APPUIE SUR UNE TOUCHE OU SWIPE';document.getElementById('snakeMsg').style.display='block';this._draw();}
-  start(){this.started=true;document.getElementById('snakeMsg').style.display='none';this.loop=setInterval(()=>this._tick(),200);}
-  stop(){clearInterval(this.loop);this.loop=null;}
-  _placeFood(){const occ=new Set(this.snake.map(s=>`${s.x},${s.y}`));let p;do{p={x:Math.floor(Math.random()*this.cols),y:Math.floor(Math.random()*this.rows)};}while(occ.has(`${p.x},${p.y}`));this.food=p;this.foodItem=this.pool[Math.floor(Math.random()*this.pool.length)];if(this.foodItem.type==='img'){this.foodImg=new Image();this.foodImg.src=this.foodItem.src;}else{this.foodImg=null;}}
-  _setDir(d){if(d.x&&this.dir.x)return;if(d.y&&this.dir.y)return;this.nextDir=d;}
-  _onKey(e){const m={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},w:{x:0,y:-1},s:{x:0,y:1},a:{x:-1,y:0},d:{x:1,y:0}};if(m[e.key]){e.preventDefault();this._setDir(m[e.key]);if(!this.started)this.start();}if(e.key==='r'||e.key==='R')this.reset();}
-  _tick(){this.dir=this.nextDir;const h={x:this.snake[0].x+this.dir.x,y:this.snake[0].y+this.dir.y};if(h.x<0||h.x>=this.cols||h.y<0||h.y>=this.rows){this._die();return;}if(this.snake.some(s=>s.x===h.x&&s.y===h.y)){this._die();return;}this.snake.unshift(h);if(h.x===this.food.x&&h.y===this.food.y){this.score++;this._updateScore();this._placeFood();}else{this.snake.pop();}this._draw();}
-  _die(){this.stop();this._draw();document.getElementById('snakeMsg').innerHTML='GAME OVER — SCORE: '+this.score+'\nAPPUIE SUR R POUR REJOUER';document.getElementById('snakeMsg').style.display='block';}
-  _updateScore(){document.getElementById('snakeScore').textContent='SCORE: '+this.score;}
-  _draw(){
-    const ctx=this.ctx,C=this.C,W=this.canvas.width,H=this.canvas.height;
-    ctx.clearRect(0,0,W,H);
-    ctx.strokeStyle='rgba(0,0,0,0.08)';ctx.lineWidth=0.5;
-    for(let x=0;x<=this.cols;x++){ctx.beginPath();ctx.moveTo(x*C,0);ctx.lineTo(x*C,H);ctx.stroke();}
-    for(let y=0;y<=this.rows;y++){ctx.beginPath();ctx.moveTo(0,y*C);ctx.lineTo(W,y*C);ctx.stroke();}
-    if(this.food){
-      const fx=this.food.x*C,fy=this.food.y*C;
-      if(this.foodItem?.type==='img'&&this.foodImg?.complete&&this.foodImg.naturalWidth){ctx.drawImage(this.foodImg,fx+2,fy+2,C-4,C-4);}
-      else if(this.foodItem?.type==='emoji'){ctx.font=(C-6)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(this.foodItem.char,fx+C/2,fy+C/2);}
-      else{ctx.fillStyle='#0a0a0a';ctx.fillRect(fx+6,fy+6,C-12,C-12);}
-    }
-    this.snake.forEach((seg,i)=>{
-      const sx=seg.x*C,sy=seg.y*C,t=i/this.snake.length;
-      if(i===0){ctx.fillStyle='#333';ctx.fillRect(sx+1,sy+1,C-2,C-2);ctx.fillStyle='#d0d0d0';if(this.dir.x===1||this.dir.x===0){ctx.fillRect(sx+C-8,sy+4,3,3);ctx.fillRect(sx+C-8,sy+C-7,3,3);}else{ctx.fillRect(sx+5,sy+4,3,3);ctx.fillRect(sx+5,sy+C-7,3,3);}}
-      else{const v=Math.round(80+t*110);ctx.fillStyle=`rgb(${v},${v},${v})`;const p=1+Math.floor(t*2);ctx.fillRect(sx+p,sy+p,C-p*2,C-p*2);}
-    });
-  }
-}
-
-localStorage.removeItem('zg_admin_ok'); // clear admin on fresh load
 renderCart();
 loadItems(); // load from Supabase
 snakeGame=new SnakeGame();
@@ -851,9 +797,6 @@ function getForumIdentity(){
   return identity;
 }
 
-let forumOpen=false;
-let forumPollInterval=null;
-
 function openForum(){
   document.getElementById('forumOverlay').classList.add('open');
   document.body.style.overflow='hidden';
@@ -882,8 +825,12 @@ function closeForum(){
 async function loadForumMessages(){
   const data=await sbFetch('forum_messages?select=*&order=created_at.asc&limit=200');
   const container2=document.getElementById('forumMessages');
-  if(!data||!Array.isArray(data)){
-    container2.innerHTML='<div class="forum-loading">Erreur de connexion. Vérifie ta connexion.</div>';
+  if(data===null){
+    container2.innerHTML='<div class="forum-loading">Erreur de connexion avec la base de données.</div>';
+    return;
+  }
+  if(!Array.isArray(data)){
+    container2.innerHTML='<div class="forum-loading">Erreur inattendue.</div>';
     return;
   }
   const me=getForumIdentity();
